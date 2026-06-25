@@ -23,6 +23,9 @@
 //   --voxel-mm=<mm>        voxel size override
 //   --out=<dir>            output directory                  (default ./output)
 //   --view                 open the interactive PicoGK viewer
+//   --sweep                run off-design Mach & AoA sweeps (CSV + tables)
+//   --sweep-mach=min:max:count   custom Mach sweep range
+//   --sweep-aoa=min:max:count    custom angle-of-attack sweep range (deg)
 //
 
 using PicoGK;
@@ -73,6 +76,14 @@ namespace WaveriderForge
 
             ReportDesign(result, flow, opt);
 
+            Directory.CreateDirectory(opt.OutDir);
+            string stem = Path.Combine(opt.OutDir,
+                $"waverider_M{opt.Mach:0.0}_{opt.AltitudeM / 1000.0:0}km");
+
+            // --- Off-design performance sweep -----------------------------------
+            if (opt.Sweep)
+                RunSweeps(result, flow, opt, stem);
+
             // --- Geometry generation with PicoGK --------------------------------
             double leRadiusM = 0;
             if (!opt.Sharp)
@@ -92,10 +103,6 @@ namespace WaveriderForge
                 ? opt.VoxelMM
                 : Math.Max(opt.LengthM * WaveriderBuilder.MM / 500.0, 1.0);
 
-            Directory.CreateDirectory(opt.OutDir);
-            string stem = Path.Combine(opt.OutDir,
-                $"waverider_M{opt.Mach:0.0}_{opt.AltitudeM / 1000.0:0}km");
-
             if (opt.View)
             {
                 Library.Go((float)voxelMM, () =>
@@ -112,6 +119,47 @@ namespace WaveriderForge
             Console.WriteLine();
             Console.WriteLine("  Done.");
             return 0;
+        }
+
+        static void RunSweeps(OptimizationResult result, FlightState flow, CliOptions opt, string stem)
+        {
+            // The geometry is fixed; rebuild it once (no PicoGK needed for sweeps).
+            var field = ConicalFlowField.Solve(flow.Mach, result.Design.ShockAngleRad, flow.Gamma);
+            var surf  = new WaveriderSurfaces(result.Design, field);
+            if (!surf.Valid) { Console.WriteLine("  (sweep skipped: invalid geometry)"); return; }
+
+            double altKm = opt.AltitudeM / 1000.0;
+
+            // Mach sweep: default 0.35..1.4 x design Mach.
+            (double mMin, double mMax, int mN) = ParseRange(
+                opt.SweepMach,
+                Math.Max(1.5, 0.35 * flow.Mach), 1.4 * flow.Mach, 14);
+
+            var machRows = OffDesignSweep.MachSweep(surf, opt.AltitudeM, mMin, mMax, mN, flow.Gamma);
+            OffDesignSweep.PrintMachTable(machRows, flow.Mach);
+            string machCsv = stem + "_mach_sweep.csv";
+            OffDesignSweep.WriteCsv(machCsv, "mach", machRows, altKm, double.NaN);
+            Console.WriteLine($"  Wrote {machCsv}");
+
+            // AoA sweep: default -4..+10 deg.
+            (double aMin, double aMax, int aN) = ParseRange(opt.SweepAoa, -4.0, 10.0, 15);
+            var aoaRows = OffDesignSweep.AoASweep(surf, flow, aMin, aMax, aN);
+            OffDesignSweep.PrintAoATable(aoaRows);
+            string aoaCsv = stem + "_aoa_sweep.csv";
+            OffDesignSweep.WriteCsv(aoaCsv, "aoa_deg", aoaRows, altKm, flow.Mach);
+            Console.WriteLine($"  Wrote {aoaCsv}");
+            Console.WriteLine();
+        }
+
+        // Parse "min:max:count"; fall back to the supplied defaults for any part.
+        static (double, double, int) ParseRange(string? spec, double dMin, double dMax, int dN)
+        {
+            if (string.IsNullOrWhiteSpace(spec)) return (dMin, dMax, dN);
+            string[] p = spec.Split(':');
+            double min = p.Length > 0 && double.TryParse(p[0], out double a) ? a : dMin;
+            double max = p.Length > 1 && double.TryParse(p[1], out double b) ? b : dMax;
+            int    n   = p.Length > 2 && int.TryParse(p[2], out int c) ? Math.Max(2, c) : dN;
+            return (min, max, n);
         }
 
         static void Generate(Library lib,
@@ -220,6 +268,9 @@ namespace WaveriderForge
         public double VoxelMM     = double.NaN;
         public bool   Sharp       = false;
         public bool   View        = false;
+        public bool   Sweep       = false;
+        public string? SweepMach  = null;   // "min:max:count"
+        public string? SweepAoa   = null;   // "min:max:count"
         public string OutDir      = "output";
 
         public static CliOptions Parse(string[] args)
@@ -248,6 +299,9 @@ namespace WaveriderForge
                         case "voxel-mm":     o.VoxelMM = D(val); break;
                         case "sharp":        o.Sharp = true; break;
                         case "view":         o.View = true; break;
+                        case "sweep":        o.Sweep = true; break;
+                        case "sweep-mach":   o.SweepMach = val; o.Sweep = true; break;
+                        case "sweep-aoa":    o.SweepAoa = val; o.Sweep = true; break;
                         case "out":          o.OutDir = val; break;
                     }
                 }

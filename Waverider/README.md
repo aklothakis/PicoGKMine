@@ -60,7 +60,29 @@ Run with no arguments to be prompted interactively for Mach and altitude.
 --voxel-mm=<mm>        voxel size override
 --out=<dir>            output directory                        (default ./output)
 --view                 open the interactive PicoGK viewer
+--sweep                run off-design Mach & AoA sweeps (tables + CSV)
+--sweep-mach=min:max:count   custom Mach sweep range
+--sweep-aoa=min:max:count    custom angle-of-attack sweep range (degrees)
 ```
+
+### Off-design sweeps
+
+Waveriders are designed for one Mach number — their shock only stays attached to
+the leading edge at the design point, so L/D falls off as you move away from it.
+`--sweep` holds the optimized geometry fixed and re-evaluates it with a
+**Modified Newtonian** panel method across a range of Mach numbers (at the design
+altitude) and angles of attack (at the design Mach):
+
+```bash
+dotnet run --project Waverider -- 8 30 --sweep
+dotnet run --project Waverider -- 8 30 --sweep-mach=3:12:19 --sweep-aoa=-4:12:17
+```
+
+It prints two tables and writes `*_mach_sweep.csv` and `*_aoa_sweep.csv`
+(columns: independent variable, altitude, L/D, C_L, C_D, lift, drag) for
+plotting. Because the sweep uses Modified Newtonian consistently at every point,
+its absolute L/D at the design Mach can differ slightly from the Taylor–Maccoll
+design-point value — the meaningful output is the *trend* of L/D off-design.
 
 ## Output
 
@@ -95,6 +117,7 @@ voxelize, mesh, export and visualize the final chosen design.
 * Performance is engineering-level (panel-method pressures + reference-
   temperature friction). Validate a finalized shape with CFD before committing
   to hardware.
+* Off-design Mach/AoA sweeps are built in (`--sweep`, Modified Newtonian).
 * Planned extensions: scramjet inlet-streamtube integration (reserve the
-  captured tube for an engine), off-design L/D sweeps, and direct
-  surrogate-based multi-objective (volume vs L/D) Pareto search.
+  captured tube for an engine), and direct surrogate-based multi-objective
+  (volume vs L/D) Pareto search.

@@ -152,8 +152,8 @@ namespace WaveriderForge
         /// Skin-friction drag of a panel using Eckert's reference-temperature
         /// method with an adiabatic (radiative) wall assumption.
         /// </summary>
-        static double FrictionDrag(double me, double te, double pe,
-                                   double length, double area, double g)
+        public static double FrictionDrag(double me, double te, double pe,
+                                          double length, double area, double g)
         {
             if (me < 1e-3 || te <= 0) return 0;
 
