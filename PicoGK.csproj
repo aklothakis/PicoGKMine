@@ -36,6 +36,16 @@
   </PropertyGroup>
 
 
+  <!-- The Waverider app is a separate project nested in this folder. Because
+       SDK-style projects glob **/*.cs recursively, exclude it here so this
+       library does not also compile the app's sources and its generated
+       obj/*.AssemblyInfo.cs (which causes duplicate-attribute errors). -->
+  <ItemGroup>
+    <Compile Remove="Waverider/**/*.cs" />
+    <EmbeddedResource Remove="Waverider/**/*" />
+    <None Remove="Waverider/**/*" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="native/osx-arm64/*.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native" />
     <None Include="native/win-x64/*.dll" Pack="true" PackagePath="runtimes/win-x64/native" />
