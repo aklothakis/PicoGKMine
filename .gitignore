@@ -500,3 +500,9 @@ xcuserdata/
 *.out
 *.app
 
+
+# Waverider Forge runtime output
+Waverider/output/
+output/
+*.stl
+*.vdb

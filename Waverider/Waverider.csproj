@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WaveriderForge</RootNamespace>
+    <AssemblyName>Waverider</AssemblyName>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Reference the PicoGK geometry kernel that lives in the parent folder -->
+  <ItemGroup>
+    <ProjectReference Include="..\PicoGK.csproj" />
+  </ItemGroup>
+
+  <!--
+    PicoGK resolves its native runtime via a bare-name DllImport ("picogk.26.2").
+    When PicoGK is consumed as a ProjectReference (rather than a NuGet package),
+    the platform native binaries are NOT copied automatically, so we copy the
+    correct set next to our executable. The .NET loader probes the app base
+    directory, so placing them at the output root is sufficient.
+  -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="..\native\win-x64\*.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="..\native\osx-arm64\*.dylib">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- The viewer needs the lighting environment next to the executable -->
+  <ItemGroup>
+    <None Include="..\assets\ViewerEnvironment.zip">
+      <Link>ViewerEnvironment.zip</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,100 @@
+# Waverider Forge
+
+A hypersonic **waverider** design application built on the
+[PicoGK](https://picogk.org) computational-geometry kernel.
+
+You give it a **design Mach number** and an **altitude**. It solves the
+real conical (Taylor–Maccoll) flow field, runs a constrained
+volume-maximizing optimizer over the osculating-cone design space, reports the
+aerodynamic performance, and produces a watertight 3D model (STL + OpenVDB)
+that you can view, 3D-print, or push into a CFD/CAD pipeline.
+
+> A waverider is a supersonic/hypersonic lifting body whose leading edge rides
+> on its own attached bow shock. Because the high-pressure shock layer is
+> trapped under the vehicle and cannot leak around the leading edge, waveriders
+> achieve the highest lift-to-drag ratios known at hypersonic speeds.
+
+## What it does (state of the art)
+
+| Stage | Method |
+|-------|--------|
+| Atmosphere | 1976 U.S. Standard Atmosphere (to 86 km) + Sutherland viscosity |
+| Inviscid flow field | **Taylor–Maccoll** conical-flow ODE, solved with RK4 |
+| Geometry | **Sobieczky osculating-cone** inverse design with streamline tracing |
+| Upper surface | freestream (streamwise) surface |
+| Viscous drag | **Eckert reference-temperature** method (most accurate engineering model for waveriders) |
+| Base drag | high-Mach base-pressure model |
+| Leading edge | blunted, radius sized from **Sutton–Graves** stagnation heating |
+| Optimization | maximize volumetric efficiency `τ = V^(2/3)/S_plan` subject to an L/D floor |
+
+The optimizer's objective directly encodes the brief — *maximize useful volume
+while preserving good flight characteristics*: it pushes for the most volume per
+unit planform area while holding the lift-to-drag ratio at (by default) 90 % of
+the best achievable value for the given flight condition.
+
+## Build & run
+
+Requires the **.NET 9 SDK** and a platform with a PicoGK native runtime
+(Windows x64 or macOS arm64 — the binaries already ship under `../native/`).
+
+```bash
+# from the repository root
+dotnet run --project Waverider -- 8 30          # Mach 8, 30 km
+
+# or with named options
+dotnet run --project Waverider -- --mach=10 --altitude-km=35 --length=24 --view
+```
+
+Run with no arguments to be prompted interactively for Mach and altitude.
+
+### Options
+
+```
+--mach=<M>             design Mach number
+--altitude-km=<km>     altitude in kilometres        (or --altitude-m=<m>)
+--length=<m>           vehicle length, metres                  (default 20)
+--ld-floor=<value>     absolute L/D floor for the optimizer
+--ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
+--q-allow-mw=<MW/m^2>  allowable leading-edge stagnation heat flux  (default 5)
+--sharp                sharp leading edge (no blunting)
+--voxel-mm=<mm>        voxel size override
+--out=<dir>            output directory                        (default ./output)
+--view                 open the interactive PicoGK viewer
+```
+
+## Output
+
+* `output/waverider_M<mach>_<alt>km.stl` — watertight surface mesh (millimetres)
+* `output/waverider_M<mach>_<alt>km.vdb` — OpenVDB voxel field
+* A printed performance report: shock/cone angles, L/D, C_L, C_D, drag
+  breakdown, volume, planform/wetted area, volumetric efficiency, leading-edge
+  radius and stagnation heat flux.
+
+## Source layout
+
+| File | Responsibility |
+|------|----------------|
+| `Atmosphere.cs` | 1976 standard atmosphere → freestream state |
+| `GasDynamics.cs` | isentropic / normal / oblique-shock relations |
+| `TaylorMaccoll.cs` | conical flow solver, streamline shape, surface Cp |
+| `WaveriderGeometry.cs` | osculating-cone construction + geometric metrics (pure math) |
+| `AeroPerformance.cs` | pressure + reference-temperature viscous force integration |
+| `Optimizer.cs` | constrained volume-maximizing search |
+| `WaveriderBuilder.cs` | analytic surfaces → PicoGK mesh/voxels, LE blunting |
+| `Program.cs` | CLI / interactive entry point, reporting, export, viewer |
+
+The geometry and aerodynamics modules have **no PicoGK dependency**, so the
+optimizer evaluates thousands of candidates cheaply; PicoGK is used only to
+voxelize, mesh, export and visualize the final chosen design.
+
+## Notes & roadmap
+
+* The osculating-cone method assumes a constant conical shock angle across the
+  span; where the base-plane shock curve is locally straight the local flow
+  approaches a 2-D wedge.
+* Performance is engineering-level (panel-method pressures + reference-
+  temperature friction). Validate a finalized shape with CFD before committing
+  to hardware.
+* Planned extensions: scramjet inlet-streamtube integration (reserve the
+  captured tube for an engine), off-design L/D sweeps, and direct
+  surrogate-based multi-objective (volume vs L/D) Pareto search.
