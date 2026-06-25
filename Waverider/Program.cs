@@ -314,7 +314,7 @@ namespace WaveriderForge
         public double QAllowMW    = 5.0;
         public double VoxelMM     = double.NaN;
         public bool   Sharp       = false;
-        public bool   View        = false;
+        public bool   View        = true;    // open the viewer by default; --no-view to disable
         public bool   Sweep       = false;
         public string? SweepMach  = null;   // "min:max:count"
         public string? SweepAoa   = null;   // "min:max:count"
@@ -348,6 +348,7 @@ namespace WaveriderForge
                         case "voxel-mm":     o.VoxelMM = D(val); break;
                         case "sharp":        o.Sharp = true; break;
                         case "view":         o.View = true; break;
+                        case "no-view":      o.View = false; break;
                         case "sweep":        o.Sweep = true; break;
                         case "sweep-mach":   o.SweepMach = val; o.Sweep = true; break;
                         case "sweep-aoa":    o.SweepAoa = val; o.Sweep = true; break;

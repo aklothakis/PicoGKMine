@@ -57,6 +57,21 @@ dotnet run --project Waverider -- --mach=10 --altitude-km=35 --length=24 --sweep
 
 The first run restores packages and compiles (about a minute); later runs are fast.
 
+### Graphical interface (Windows)
+
+For a point-and-click interface instead of the command line, run the GUI
+project (Windows only — it uses Windows Forms):
+
+```bash
+dotnet run --project WaveriderGui
+```
+
+Enter the Mach number, altitude and either a length or a "fit inside a box"
+envelope, toggle blunt leading edge / off-design sweep, and click **Generate**.
+The performance report appears on the right; **Open 3D model (STL)** opens the
+result in the Windows 3D viewer, and **Open output folder** shows the exported
+files.
+
 ## 4. macOS only — clear Gatekeeper quarantine
 
 The bundled `.dylib` files are not notarized, so macOS may block them

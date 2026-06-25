@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PicoGK", "PicoGK.csproj", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Waverider", "Waverider\Waverider.csproj", "{B2C3D4E5-6789-4ABC-9DEF-0123456789AB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WaveriderGui", "WaveriderGui\WaveriderGui.csproj", "{C3D4E5F6-789A-4BCD-9EF0-123456789ABC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,10 @@ Global
 		{B2C3D4E5-6789-4ABC-9DEF-0123456789AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2C3D4E5-6789-4ABC-9DEF-0123456789AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2C3D4E5-6789-4ABC-9DEF-0123456789AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C3D4E5F6-789A-4BCD-9EF0-123456789ABC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3D4E5F6-789A-4BCD-9EF0-123456789ABC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3D4E5F6-789A-4BCD-9EF0-123456789ABC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3D4E5F6-789A-4BCD-9EF0-123456789ABC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

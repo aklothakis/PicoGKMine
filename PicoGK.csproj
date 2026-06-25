@@ -44,6 +44,9 @@
     <Compile Remove="Waverider/**/*.cs" />
     <EmbeddedResource Remove="Waverider/**/*" />
     <None Remove="Waverider/**/*" />
+    <Compile Remove="WaveriderGui/**/*.cs" />
+    <EmbeddedResource Remove="WaveriderGui/**/*" />
+    <None Remove="WaveriderGui/**/*" />
   </ItemGroup>
 
   <ItemGroup>

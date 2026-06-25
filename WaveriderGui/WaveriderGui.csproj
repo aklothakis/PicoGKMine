@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>WaveriderForge.Gui</RootNamespace>
+    <AssemblyName>WaveriderGui</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Reuse the design/aero/geometry core from the console project. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Waverider\Waverider.csproj" />
+  </ItemGroup>
+
+  <!-- PicoGK resolves its native runtime from the app base directory, so copy
+       the Windows binaries (and the viewer environment) next to this exe. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="..\native\win-x64\*.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\assets\ViewerEnvironment.zip">
+      <Link>ViewerEnvironment.zip</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

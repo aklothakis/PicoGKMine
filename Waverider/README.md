@@ -49,6 +49,15 @@ dotnet run --project Waverider -- --mach=10 --altitude-km=35 --length=8 --span=6
 Run with no arguments to be prompted interactively for Mach, altitude and length.
 Positional arguments are `<mach> <altitudeKm> [lengthM]`.
 
+A point-and-click **Windows GUI** front end is also available:
+
+```bash
+dotnet run --project WaveriderGui
+```
+
+It shares this project's design core (`WaveriderJob`), so it produces identical
+results — enter the inputs, click Generate, read the report, and open the STL.
+
 ### Fit inside a box
 
 Instead of setting length/span directly, give a **length × width × height
