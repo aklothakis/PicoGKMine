@@ -137,9 +137,13 @@ namespace WaveriderForge
             }
             Console.WriteLine();
 
+            // Size voxels from the ACTUAL design length (in box mode opt.LengthM
+            // is unset; the real length is result.Design.LengthM).
+            double designLenM = result.Design.LengthM;
             double voxelMM = !double.IsNaN(opt.VoxelMM)
                 ? opt.VoxelMM
-                : Math.Max(opt.LengthM * WaveriderBuilder.MM / 500.0, 1.0);
+                : Math.Max(designLenM * WaveriderBuilder.MM / 500.0, 1.0);
+            if (double.IsNaN(voxelMM) || voxelMM <= 0) voxelMM = 1.0;   // never pass NaN to the kernel
 
             if (opt.View)
             {
