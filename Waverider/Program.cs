@@ -9,13 +9,14 @@
 // and generates a watertight 3D model (STL / OpenVDB) with PicoGK.
 //
 // Usage:
-//   Waverider <mach> <altitudeKm> [options]
-//   Waverider --mach=8 --altitude-km=30 --length=22 --view
+//   Waverider <mach> <altitudeKm> [lengthM] [options]
+//   Waverider --mach=8 --altitude-km=30 --length=6 --span=5 --view
 //
 // Options:
 //   --mach=<M>             design Mach number
 //   --altitude-km=<km>     altitude in kilometres   (or --altitude-m=<m>)
 //   --length=<m>           vehicle length, metres            (default 20)
+//   --span=<m>             fix the full span; omit to let the optimizer choose
 //   --ld-floor=<value>     absolute L/D floor for the optimizer
 //   --ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
 //   --q-allow-mw=<MW/m^2>  allowable LE stagnation heat flux (default 5)
@@ -48,23 +49,31 @@ namespace WaveriderForge
                 opt.Mach = Prompt("Design Mach number", 8.0, m => m > 1.2 && m < 40);
             if (double.IsNaN(opt.AltitudeM))
                 opt.AltitudeM = 1000.0 * Prompt("Altitude (km)", 30.0, a => a >= 0 && a <= 86);
+            if (double.IsNaN(opt.LengthM))
+                opt.LengthM = Prompt("Vehicle length (m)", 20.0, l => l > 0.05 && l < 200);
 
             FlightState flow = Atmosphere.At(opt.AltitudeM, opt.Mach);
 
             ReportFlight(flow);
 
             // --- Optimize -------------------------------------------------------
-            var seed = new WaveriderDesign { LengthM = opt.LengthM };
+            double? fixedSpan = double.IsNaN(opt.SpanM) ? null : opt.SpanM;
+            var seed = new WaveriderDesign
+            {
+                LengthM = opt.LengthM,
+                WidthM  = fixedSpan ?? opt.LengthM,
+            };
 
             Console.WriteLine("  Optimizing (this can take a moment)...");
             // First pass: find the best achievable L/D so we can anchor the floor.
-            var probe = Optimizer.Optimize(seed, flow, 0.0);
+            var probe = Optimizer.Optimize(seed, flow, 0.0, null, fixedSpan);
             double ldFloor = !double.IsNaN(opt.LDFloor)
                 ? opt.LDFloor
                 : opt.LDRetention * probe.MaxLDSeen;
 
             var result = Optimizer.Optimize(seed, flow, ldFloor,
-                                            msg => Console.WriteLine("    " + msg));
+                                            msg => Console.WriteLine("    " + msg),
+                                            fixedSpan);
 
             if (!result.Aero.Valid)
             {
@@ -261,7 +270,8 @@ namespace WaveriderForge
     {
         public double Mach        = double.NaN;
         public double AltitudeM   = double.NaN;
-        public double LengthM     = 20.0;
+        public double LengthM     = double.NaN;
+        public double SpanM       = double.NaN;   // fix the span; NaN => optimizer chooses
         public double LDFloor     = double.NaN;
         public double LDRetention = 0.90;
         public double QAllowMW    = 5.0;
@@ -293,6 +303,7 @@ namespace WaveriderForge
                         case "altitude-km":  o.AltitudeM = D(val) * 1000.0; break;
                         case "altitude-m":   o.AltitudeM = D(val); break;
                         case "length":       o.LengthM = D(val); break;
+                        case "span":         o.SpanM = D(val); break;
                         case "ld-floor":     o.LDFloor = D(val); break;
                         case "ld-retention": o.LDRetention = D(val); break;
                         case "q-allow-mw":   o.QAllowMW = D(val); break;
@@ -313,6 +324,7 @@ namespace WaveriderForge
 
             if (double.IsNaN(o.Mach) && positional.Count >= 1) o.Mach = positional[0];
             if (double.IsNaN(o.AltitudeM) && positional.Count >= 2) o.AltitudeM = positional[1] * 1000.0;
+            if (double.IsNaN(o.LengthM) && positional.Count >= 3) o.LengthM = positional[2];
             return o;
         }
 

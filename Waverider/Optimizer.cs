@@ -32,7 +32,8 @@ namespace WaveriderForge
             WaveriderDesign seed,
             FlightState     flow,
             double          ldFloor,
-            Action<string>? log = null)
+            Action<string>? log = null,
+            double?         fixedWidth = null)
         {
             double g       = flow.Gamma;
             double betaMin = GasDynamics.MachAngle(flow.Mach) * 1.06;
@@ -110,12 +111,15 @@ namespace WaveriderForge
 
             // ---- Stage 1: coarse grid ----------------------------------------
             const int NB = 7, NW = 5, ND = 5, NC = 5;
+            int nw = fixedWidth.HasValue ? 1 : NW;
             for (int ib = 0; ib < NB; ib++)
             {
                 double beta = betaMin + (betaMax - betaMin) * ib / (NB - 1);
-                for (int iw = 0; iw < NW; iw++)
+                for (int iw = 0; iw < nw; iw++)
                 {
-                    double width = seed.LengthM * (0.6 + 0.7 * iw / (NW - 1));
+                    // Free span ranges 0.5..1.0 x length (waveriders are wide,
+                    // but keep span <= length unless the user fixes it).
+                    double width = fixedWidth ?? seed.LengthM * (0.5 + 0.5 * iw / (NW - 1));
                     for (int id = 0; id < ND; id++)
                     {
                         double depth = 0.05 + 0.30 * id / (ND - 1);
@@ -145,17 +149,20 @@ namespace WaveriderForge
             double b0 = pick.ShockAngleRad, w0 = pick.WidthM,
                    d0 = pick.CurveDepthRatio, c0 = pick.CompressionFraction;
             double db = (betaMax - betaMin) / (NB - 1) * 0.6;
-            double dw = seed.LengthM * 0.7 / (NW - 1) * 0.6;
+            double dw = seed.LengthM * 0.5 / (NW - 1) * 0.6;
             double dd = 0.30 / (ND - 1) * 0.6;
             double dc = 0.55 / (NC - 1) * 0.6;
 
+            int iwLo = fixedWidth.HasValue ? 0 : -1;
+            int iwHi = fixedWidth.HasValue ? 0 : 1;
+
             for (int ib = -2; ib <= 2; ib++)
-            for (int iw = -1; iw <= 1; iw++)
+            for (int iw = iwLo; iw <= iwHi; iw++)
             for (int id = -1; id <= 1; id++)
             for (int ic = -1; ic <= 1; ic++)
             {
                 double beta  = Math.Clamp(b0 + ib * db * 0.5, betaMin, betaMax);
-                double width = Math.Clamp(w0 + iw * dw, 0.4 * seed.LengthM, 1.4 * seed.LengthM);
+                double width = fixedWidth ?? Math.Clamp(w0 + iw * dw, 0.4 * seed.LengthM, 1.05 * seed.LengthM);
                 double depth = Math.Clamp(d0 + id * dd, 0.03, 0.40);
                 double comp  = Math.Clamp(c0 + ic * dc, 0.15, 0.90);
                 Consider(beta, width, depth, comp);

@@ -39,13 +39,15 @@ Requires the **.NET 9 SDK** and a platform with a PicoGK native runtime
 
 ```bash
 # from the repository root
-dotnet run --project Waverider -- 8 30          # Mach 8, 30 km
+dotnet run --project Waverider -- 8 30          # Mach 8, 30 km (length prompts/defaults)
+dotnet run --project Waverider -- 8 30 6        # Mach 8, 30 km, 6 m long
 
 # or with named options
-dotnet run --project Waverider -- --mach=10 --altitude-km=35 --length=24 --view
+dotnet run --project Waverider -- --mach=10 --altitude-km=35 --length=8 --span=6 --view
 ```
 
-Run with no arguments to be prompted interactively for Mach and altitude.
+Run with no arguments to be prompted interactively for Mach, altitude and length.
+Positional arguments are `<mach> <altitudeKm> [lengthM]`.
 
 ### Options
 
@@ -53,6 +55,7 @@ Run with no arguments to be prompted interactively for Mach and altitude.
 --mach=<M>             design Mach number
 --altitude-km=<km>     altitude in kilometres        (or --altitude-m=<m>)
 --length=<m>           vehicle length, metres                  (default 20)
+--span=<m>             fix the full span (else the optimizer picks 0.5-1.0 x length)
 --ld-floor=<value>     absolute L/D floor for the optimizer
 --ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
 --q-allow-mw=<MW/m^2>  allowable leading-edge stagnation heat flux  (default 5)
