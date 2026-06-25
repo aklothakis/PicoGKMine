@@ -15,26 +15,26 @@ namespace WaveriderForge
 {
     public static class Heating
     {
-        // Sutton-Graves stagnation-point convective heating constant (Earth air),
-        // q[W/cm^2] = k * sqrt(rho_inf / R_n) * V_inf^3.
+        // Sutton-Graves stagnation-point convective heating constant for Earth
+        // air. With SI inputs (rho_inf in kg/m^3, R_n in m, V_inf in m/s) the
+        // relation q = K * sqrt(rho_inf / R_n) * V_inf^3 yields q in W/m^2.
         const double K = 1.7415e-4;
 
         /// <summary>Stagnation heat flux (W/m^2) for a nose radius R_n (m).</summary>
         public static double StagHeatFlux(FlightState f, double noseRadiusM)
         {
-            double qWcm2 = K * Math.Sqrt(f.Density / noseRadiusM) *
-                           Math.Pow(f.Velocity, 3.0);
-            return qWcm2 * 1.0e4;   // W/cm^2 -> W/m^2
+            return K * Math.Sqrt(f.Density / noseRadiusM) *
+                   Math.Pow(f.Velocity, 3.0);
         }
 
         /// <summary>
         /// Leading-edge radius (m) that keeps the stagnation heat flux at or below
-        /// the allowable value at this flight condition.
+        /// the allowable value (W/m^2) at this flight condition. Inverts
+        /// Sutton-Graves: R_n = rho_inf * (K * V_inf^3 / q_allow)^2.
         /// </summary>
         public static double LeadingEdgeRadius(FlightState f, double qAllowWm2)
         {
-            double qWcm2 = qAllowWm2 * 1.0e-4;
-            double ratio = K * Math.Pow(f.Velocity, 3.0) / qWcm2;
+            double ratio = K * Math.Pow(f.Velocity, 3.0) / qAllowWm2;
             return f.Density * ratio * ratio;
         }
     }
