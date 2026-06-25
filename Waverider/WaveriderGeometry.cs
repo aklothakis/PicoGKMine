@@ -304,5 +304,22 @@ namespace WaveriderForge
             for (int s = 0; s < Ns; s++) le[s] = Lower[s][0];
             return le;
         }
+
+        /// <summary>Axis-aligned bounding-box extents (metres) of the body.</summary>
+        public void Extents(out double ex, out double ey, out double ez)
+        {
+            double minX = double.PositiveInfinity, minY = minX, minZ = minX;
+            double maxX = double.NegativeInfinity, maxY = maxX, maxZ = maxX;
+            void Acc(D3 p)
+            {
+                if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+                if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
+                if (p.Z < minZ) minZ = p.Z; if (p.Z > maxZ) maxZ = p.Z;
+            }
+            for (int s = 0; s < Ns; s++)
+                for (int t = 0; t <= Nc; t++) { Acc(Lower[s][t]); Acc(Upper[s][t]); }
+
+            ex = maxX - minX; ey = maxY - minY; ez = maxZ - minZ;
+        }
     }
 }

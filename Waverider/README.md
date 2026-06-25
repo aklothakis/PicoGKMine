@@ -49,6 +49,21 @@ dotnet run --project Waverider -- --mach=10 --altitude-km=35 --length=8 --span=6
 Run with no arguments to be prompted interactively for Mach, altitude and length.
 Positional arguments are `<mach> <altitudeKm> [lengthM]`.
 
+### Fit inside a box
+
+Instead of setting length/span directly, give a **length × width × height
+envelope** and the optimizer returns the waverider that **encloses the most
+volume inside that box** while holding L/D at the floor:
+
+```bash
+dotnet run --project Waverider -- 8 30 --box=6x5x1.2
+```
+
+It works by exploiting scale invariance: L/D and shape proportions don't depend
+on absolute size, so the search ranks candidate *shapes*, scales each one up
+until it just touches a box face, and maximizes the resulting absolute volume.
+The report prints the target envelope and the achieved bounding box.
+
 ### Options
 
 ```
@@ -56,6 +71,7 @@ Positional arguments are `<mach> <altitudeKm> [lengthM]`.
 --altitude-km=<km>     altitude in kilometres        (or --altitude-m=<m>)
 --length=<m>           vehicle length, metres                  (default 20)
 --span=<m>             fix the full span (else the optimizer picks 0.5-1.0 x length)
+--box=LxWxH            fit inside a length x width x height envelope (metres)
 --ld-floor=<value>     absolute L/D floor for the optimizer
 --ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
 --q-allow-mw=<MW/m^2>  allowable leading-edge stagnation heat flux  (default 5)

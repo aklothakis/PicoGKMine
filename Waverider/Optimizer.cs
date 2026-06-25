@@ -195,5 +195,162 @@ namespace WaveriderForge
                 MaxLDSeen = fbLD,
             };
         }
+
+        static WaveriderDesign MakeDesign(WaveriderDesign seed, double length, double aspect,
+                                          double beta, double depth, double comp, int ns, int nc)
+            => new WaveriderDesign
+            {
+                LengthM = length, WidthM = aspect * length,
+                ShockAngleRad = beta, CurveDepthRatio = depth, CompressionFraction = comp,
+                TipTaper = seed.TipTaper, CurveExponent = seed.CurveExponent,
+                Nspan = ns, Nchord = nc,
+            };
+
+        /// <summary>
+        /// Maximize the volume enclosed inside a length x width x height box while
+        /// keeping L/D above a floor. Because L/D and shape are scale invariant,
+        /// each candidate shape is scaled up until it just touches a box face;
+        /// the objective is the resulting absolute volume.
+        /// </summary>
+        public static OptimizationResult OptimizeInBox(
+            WaveriderDesign seed,
+            FlightState     flow,
+            double boxL, double boxW, double boxH,
+            double ldFloor,
+            Action<string>? log = null)
+        {
+            double g       = flow.Gamma;
+            double betaMin = GasDynamics.MachAngle(flow.Mach) * 1.06;
+            double betaMax = GasDynamics.ShockAngleOfMaxDeflection(flow.Mach, g) * 0.95;
+
+            var fieldCache = new Dictionary<int, ConicalFlowField>();
+            ConicalFlowField Field(double beta)
+            {
+                int key = (int)Math.Round(beta * 1e5);
+                if (!fieldCache.TryGetValue(key, out var f))
+                {
+                    f = ConicalFlowField.Solve(flow.Mach, beta, g);
+                    fieldCache[key] = f;
+                }
+                return f;
+            }
+
+            const int csNs = 61, csNc = 23;
+
+            int evals = 0;
+            double bestScore = double.NegativeInfinity;
+            bool   bestFeasible = false, haveBest = false;
+            (double beta, double a, double depth, double comp) best = default;
+
+            double fbLD = double.NegativeInfinity;
+            (double beta, double a, double depth, double comp) fb = default;
+            bool haveFb = false;
+
+            void Consider(double beta, double a, double depth, double comp)
+            {
+                var f = Field(beta);
+                if (!f.Valid) return;
+
+                var d1 = MakeDesign(seed, 1.0, a, beta, depth, comp, csNs, csNc);
+                var s1 = new WaveriderSurfaces(d1, f);
+                if (!s1.Valid) return;
+
+                s1.Extents(out double ex, out double ey, out double ez);
+                if (ex <= 1e-6 || ey <= 1e-6 || ez <= 1e-6) return;
+
+                double lMax = Math.Min(boxL / ex, Math.Min(boxW / ey, boxH / ez));
+                if (lMax <= 0 || double.IsNaN(lMax) || double.IsInfinity(lMax)) return;
+
+                var aero = AeroPerformance.Evaluate(s1, flow);
+                if (!aero.Valid) return;
+                evals++;
+
+                double vol = aero.Volume * lMax * lMax * lMax;   // scales with size^3
+
+                if (aero.LiftToDrag > fbLD)
+                {
+                    fbLD = aero.LiftToDrag; fb = (beta, a, depth, comp); haveFb = true;
+                }
+
+                bool feasible = aero.LiftToDrag >= ldFloor;
+                double score = feasible ? vol : vol - 1e9 * (ldFloor - aero.LiftToDrag);
+
+                if ((feasible && !bestFeasible) ||
+                    (feasible == bestFeasible && score > bestScore))
+                {
+                    bestScore = score; best = (beta, a, depth, comp);
+                    bestFeasible = feasible; haveBest = true;
+                }
+            }
+
+            // ---- Coarse grid over shape + aspect ------------------------------
+            const int NB = 7, NA = 6, ND = 5, NC = 5;
+            for (int ib = 0; ib < NB; ib++)
+            {
+                double beta = betaMin + (betaMax - betaMin) * ib / (NB - 1);
+                for (int ia = 0; ia < NA; ia++)
+                {
+                    double a = 0.4 + 1.0 * ia / (NA - 1);        // span/length 0.4..1.4
+                    for (int id = 0; id < ND; id++)
+                    {
+                        double depth = 0.05 + 0.30 * id / (ND - 1);
+                        for (int ic = 0; ic < NC; ic++)
+                            Consider(beta, a, depth, 0.30 + 0.55 * ic / (NC - 1));
+                    }
+                }
+            }
+
+            if (!haveBest && !haveFb)
+                return new OptimizationResult
+                {
+                    Design = seed, Aero = AeroResult.Invalid,
+                    MeetsLD = false, LDFloor = ldFloor, Evaluations = evals, MaxLDSeen = 0
+                };
+
+            var sel = haveBest ? best : fb;
+
+            // ---- Local refinement ---------------------------------------------
+            double db = (betaMax - betaMin) / (NB - 1) * 0.6;
+            double da = 1.0 / (NA - 1) * 0.6;
+            double dd = 0.30 / (ND - 1) * 0.6;
+            double dc = 0.55 / (NC - 1) * 0.6;
+
+            for (int ib = -2; ib <= 2; ib++)
+            for (int ia = -1; ia <= 1; ia++)
+            for (int id = -1; id <= 1; id++)
+            for (int ic = -1; ic <= 1; ic++)
+            {
+                double beta  = Math.Clamp(sel.beta + ib * db * 0.5, betaMin, betaMax);
+                double a     = Math.Clamp(sel.a + ia * da, 0.30, 1.60);
+                double depth = Math.Clamp(sel.depth + id * dd, 0.03, 0.40);
+                double comp  = Math.Clamp(sel.comp + ic * dc, 0.15, 0.90);
+                Consider(beta, a, depth, comp);
+            }
+
+            sel = haveBest ? best : fb;
+
+            // ---- Finalize: scale the winner to the box at full resolution ------
+            var field = ConicalFlowField.Solve(flow.Mach, sel.beta, g);
+            var refSurf = new WaveriderSurfaces(
+                MakeDesign(seed, 1.0, sel.a, sel.beta, sel.depth, sel.comp, seed.Nspan, seed.Nchord),
+                field);
+            refSurf.Extents(out double rex, out double rey, out double rez);
+            double lMaxFull = Math.Min(boxL / rex, Math.Min(boxW / rey, boxH / rez));
+
+            var fullDesign = MakeDesign(seed, lMaxFull, sel.a, sel.beta, sel.depth, sel.comp,
+                                        seed.Nspan, seed.Nchord);
+            var fullSurf = new WaveriderSurfaces(fullDesign, field);
+            var fullAero = AeroPerformance.Evaluate(fullSurf, flow);
+
+            return new OptimizationResult
+            {
+                Design = fullDesign,
+                Aero = fullAero,
+                MeetsLD = bestFeasible && fullAero.Valid && fullAero.LiftToDrag >= ldFloor,
+                LDFloor = ldFloor,
+                Evaluations = evals,
+                MaxLDSeen = fbLD,
+            };
+        }
     }
 }

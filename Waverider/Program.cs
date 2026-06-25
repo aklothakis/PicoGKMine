@@ -17,6 +17,9 @@
 //   --altitude-km=<km>     altitude in kilometres   (or --altitude-m=<m>)
 //   --length=<m>           vehicle length, metres            (default 20)
 //   --span=<m>             fix the full span; omit to let the optimizer choose
+//   --box=LxWxH            fit inside a length x width x height envelope (metres);
+//                          maximizes enclosed volume at the L/D floor and
+//                          overrides --length/--span
 //   --ld-floor=<value>     absolute L/D floor for the optimizer
 //   --ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
 //   --q-allow-mw=<MW/m^2>  allowable LE stagnation heat flux (default 5)
@@ -49,7 +52,7 @@ namespace WaveriderForge
                 opt.Mach = Prompt("Design Mach number", 8.0, m => m > 1.2 && m < 40);
             if (double.IsNaN(opt.AltitudeM))
                 opt.AltitudeM = 1000.0 * Prompt("Altitude (km)", 30.0, a => a >= 0 && a <= 86);
-            if (double.IsNaN(opt.LengthM))
+            if (!opt.HasBox && double.IsNaN(opt.LengthM))
                 opt.LengthM = Prompt("Vehicle length (m)", 20.0, l => l > 0.05 && l < 200);
 
             FlightState flow = Atmosphere.At(opt.AltitudeM, opt.Mach);
@@ -60,20 +63,32 @@ namespace WaveriderForge
             double? fixedSpan = double.IsNaN(opt.SpanM) ? null : opt.SpanM;
             var seed = new WaveriderDesign
             {
-                LengthM = opt.LengthM,
-                WidthM  = fixedSpan ?? opt.LengthM,
+                LengthM = opt.HasBox ? 1.0 : opt.LengthM,
+                WidthM  = opt.HasBox ? 1.0 : (fixedSpan ?? opt.LengthM),
             };
 
             Console.WriteLine("  Optimizing (this can take a moment)...");
-            // First pass: find the best achievable L/D so we can anchor the floor.
-            var probe = Optimizer.Optimize(seed, flow, 0.0, null, fixedSpan);
-            double ldFloor = !double.IsNaN(opt.LDFloor)
-                ? opt.LDFloor
-                : opt.LDRetention * probe.MaxLDSeen;
 
-            var result = Optimizer.Optimize(seed, flow, ldFloor,
+            OptimizationResult result;
+            if (opt.HasBox)
+            {
+                Console.WriteLine($"  Fitting inside box    : {opt.BoxL:F2} x {opt.BoxW:F2} x {opt.BoxH:F2} m (LxWxH)");
+                var probe = Optimizer.OptimizeInBox(seed, flow, opt.BoxL, opt.BoxW, opt.BoxH, 0.0);
+                double ldFloor = !double.IsNaN(opt.LDFloor)
+                    ? opt.LDFloor : opt.LDRetention * probe.MaxLDSeen;
+                result = Optimizer.OptimizeInBox(seed, flow, opt.BoxL, opt.BoxW, opt.BoxH,
+                                                 ldFloor, msg => Console.WriteLine("    " + msg));
+            }
+            else
+            {
+                // First pass: find the best achievable L/D so we can anchor the floor.
+                var probe = Optimizer.Optimize(seed, flow, 0.0, null, fixedSpan);
+                double ldFloor = !double.IsNaN(opt.LDFloor)
+                    ? opt.LDFloor : opt.LDRetention * probe.MaxLDSeen;
+                result = Optimizer.Optimize(seed, flow, ldFloor,
                                             msg => Console.WriteLine("    " + msg),
                                             fixedSpan);
+            }
 
             if (!result.Aero.Valid)
             {
@@ -84,6 +99,20 @@ namespace WaveriderForge
             }
 
             ReportDesign(result, flow, opt);
+
+            // Report the actual bounding box (gives the height, and the box fit).
+            {
+                var rs = new WaveriderSurfaces(result.Design,
+                    ConicalFlowField.Solve(flow.Mach, result.Design.ShockAngleRad, flow.Gamma));
+                if (rs.Valid)
+                {
+                    rs.Extents(out double ex, out double ey, out double ez);
+                    if (opt.HasBox)
+                        Console.WriteLine($"  Box envelope target   : {opt.BoxL:F2} x {opt.BoxW:F2} x {opt.BoxH:F2} m (LxWxH)");
+                    Console.WriteLine($"  Actual bounding box   : {ex:F2} x {ey:F2} x {ez:F2} m (LxWxH)");
+                    Console.WriteLine();
+                }
+            }
 
             Directory.CreateDirectory(opt.OutDir);
             string stem = Path.Combine(opt.OutDir,
@@ -272,6 +301,10 @@ namespace WaveriderForge
         public double AltitudeM   = double.NaN;
         public double LengthM     = double.NaN;
         public double SpanM       = double.NaN;   // fix the span; NaN => optimizer chooses
+        public double BoxL        = double.NaN;   // fit-in-box envelope (length x width x height)
+        public double BoxW        = double.NaN;
+        public double BoxH        = double.NaN;
+        public bool   HasBox => !double.IsNaN(BoxL) && !double.IsNaN(BoxW) && !double.IsNaN(BoxH);
         public double LDFloor     = double.NaN;
         public double LDRetention = 0.90;
         public double QAllowMW    = 5.0;
@@ -304,6 +337,7 @@ namespace WaveriderForge
                         case "altitude-m":   o.AltitudeM = D(val); break;
                         case "length":       o.LengthM = D(val); break;
                         case "span":         o.SpanM = D(val); break;
+                        case "box":          ParseBox(o, val); break;
                         case "ld-floor":     o.LDFloor = D(val); break;
                         case "ld-retention": o.LDRetention = D(val); break;
                         case "q-allow-mw":   o.QAllowMW = D(val); break;
@@ -329,5 +363,14 @@ namespace WaveriderForge
         }
 
         static double D(string s) => double.TryParse(s, out double v) ? v : double.NaN;
+
+        // Parse a "LxWxH" envelope in metres (also accepts 'X' or '*').
+        static void ParseBox(CliOptions o, string val)
+        {
+            string[] p = val.Split('x', 'X', '*');
+            if (p.Length >= 1) o.BoxL = D(p[0]);
+            if (p.Length >= 2) o.BoxW = D(p[1]);
+            if (p.Length >= 3) o.BoxH = D(p[2]);
+        }
     }
 }
