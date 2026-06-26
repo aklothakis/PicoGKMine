@@ -3,13 +3,14 @@
 //
 // Waverider Forge - Windows Forms control panel.
 //
-// A simple GUI front end over the WaveriderJob facade: enter the flight
-// condition and size constraints, click Generate, read the performance report,
-// and open the exported STL in the system 3D viewer.
+// Enter the flight condition and size constraints, click Generate, and the
+// optimized waverider is rendered live in the preview pane (drag to orbit) with
+// the performance report below it. The STL/VDB are exported alongside.
 //
 
 using System.Diagnostics;
 using System.Drawing;
+using System.Numerics;
 using System.Windows.Forms;
 
 namespace WaveriderForge.Gui
@@ -20,6 +21,8 @@ namespace WaveriderForge.Gui
         readonly CheckBox      chkBox, chkBlunt, chkSweep;
         readonly Button        btnGen, btnStl, btnFolder;
         readonly TextBox       txtReport;
+        readonly Viewport3D    viewport;
+        readonly SplitContainer split;
         readonly Label         lblStatus;
 
         string? m_strLastStl;
@@ -28,9 +31,9 @@ namespace WaveriderForge.Gui
         public MainForm()
         {
             Text          = "Waverider Forge";
-            Width         = 960;
-            Height        = 660;
-            MinimumSize   = new Size(820, 560);
+            Width         = 1040;
+            Height        = 720;
+            MinimumSize   = new Size(900, 600);
             StartPosition = FormStartPosition.CenterScreen;
             Font          = new Font("Segoe UI", 9F);
 
@@ -68,7 +71,8 @@ namespace WaveriderForge.Gui
             lblStatus = new Label { Left = 12, Top = y, Width = 320, Height = 40, Text = "Ready." };
             pnl.Controls.Add(lblStatus);
 
-            // ---- Report (right) ----------------------------------------------
+            // ---- Right side: 3D preview (top) + report (bottom) --------------
+            viewport = new Viewport3D { Dock = DockStyle.Fill };
             txtReport = new TextBox
             {
                 Dock = DockStyle.Fill,
@@ -80,25 +84,41 @@ namespace WaveriderForge.Gui
                 BackColor = Color.White,
             };
 
+            split = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Horizontal,
+                SplitterWidth = 6,
+                Panel1MinSize = 140,
+                Panel2MinSize = 90,
+            };
+            split.Panel1.Controls.Add(viewport);
+            split.Panel2.Controls.Add(txtReport);
+
             // ---- Bottom button bar -------------------------------------------
             var bar = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(8) };
-
             btnStl = new Button { Text = "Open 3D model (STL)", Left = 8, Top = 6, Width = 180, Height = 30, Enabled = false };
             btnStl.Click += (_, _) => OpenPath(m_strLastStl);
             bar.Controls.Add(btnStl);
-
             btnFolder = new Button { Text = "Open output folder", Left = 196, Top = 6, Width = 180, Height = 30 };
             btnFolder.Click += (_, _) => OpenPath(m_strOutDir);
             bar.Controls.Add(btnFolder);
 
-            // Add docked controls so the Fill report box sits behind the edge
-            // panels in the z-order and they claim their space first.
-            Controls.Add(txtReport);
+            // Add Fill control first so the edge panels claim their space first.
+            Controls.Add(split);
             Controls.Add(pnl);
             Controls.Add(bar);
 
             chkBox.CheckedChanged += (_, _) => SyncBoxMode();
             SyncBoxMode();
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            // Give the preview ~60% of the right-hand height.
+            try { split.SplitterDistance = Math.Max(160, (int)(split.Height * 0.6)); }
+            catch { /* size not ready yet; default is fine */ }
         }
 
         void SyncBoxMode()
@@ -135,27 +155,34 @@ namespace WaveriderForge.Gui
 
             try
             {
-                var (report, stl) = await Task.Run(() =>
+                var job = await Task.Run(() =>
                 {
                     var r = WaveriderJob.Design(inp);
-                    if (!r.Opt.Aero.Valid || r.Surfaces is null)
-                        return (r.Report, (string?)null);
+                    string report = r.Report;
+                    string? stl = null;
 
-                    string stem = WaveriderJob.Stem(inp);
-                    double vol = WaveriderJob.Export(r, stem, out string stlp, out _);
-
-                    string rep = r.Report + Environment.NewLine +
-                                 $"Voxel-model volume   : {vol:F3} m^3" + Environment.NewLine +
-                                 $"Wrote {stlp}";
-
-                    if (inp.Sweep) rep += Environment.NewLine + RunSweeps(r, inp, stem);
-                    return (rep, (string?)stlp);
+                    if (r.Opt.Aero.Valid && r.Surfaces is not null)
+                    {
+                        string stem = WaveriderJob.Stem(inp);
+                        double vol = WaveriderJob.Export(r, stem, out string stlp, out _);
+                        stl = stlp;
+                        report += Environment.NewLine +
+                                  $"Voxel-model volume   : {vol:F3} m^3" + Environment.NewLine +
+                                  $"Wrote {stlp}";
+                        if (inp.Sweep) report += Environment.NewLine + RunSweeps(r, inp, stem);
+                    }
+                    var tris = BuildPreview(r);
+                    return (report, stl, tris);
                 });
 
-                txtReport.Text = report.Replace("\n", Environment.NewLine);
-                m_strLastStl   = stl;
-                btnStl.Enabled = stl is not null;
-                lblStatus.Text = stl is not null ? "Done." : "Done - no valid geometry.";
+                txtReport.Text = job.report.Replace("\n", Environment.NewLine);
+                m_strLastStl   = job.stl;
+                btnStl.Enabled = job.stl is not null;
+
+                if (job.tris.Count > 0) viewport.SetTriangles(job.tris);
+                else                    viewport.Clear();
+
+                lblStatus.Text = job.stl is not null ? "Done." : "Done - no valid geometry.";
             }
             catch (Exception ex)
             {
@@ -167,6 +194,31 @@ namespace WaveriderForge.Gui
                 btnGen.Enabled = true;
                 Cursor = Cursors.Default;
             }
+        }
+
+        // Build a reduced-resolution triangle list for the live preview.
+        static List<(Vector3, Vector3, Vector3)> BuildPreview(WaveriderJobResult r)
+        {
+            var list = new List<(Vector3, Vector3, Vector3)>();
+            var src = r.Surfaces;
+            if (!r.Opt.Aero.Valid || src is null) return list;
+
+            var d = r.Opt.Design;
+            var preview = new WaveriderDesign
+            {
+                LengthM = d.LengthM, WidthM = d.WidthM,
+                ShockAngleRad = d.ShockAngleRad, CurveDepthRatio = d.CurveDepthRatio,
+                CompressionFraction = d.CompressionFraction, TipTaper = d.TipTaper,
+                CurveExponent = d.CurveExponent, Nspan = 61, Nchord = 19,
+            };
+            var ps = new WaveriderSurfaces(preview, src.Field);
+            if (!ps.Valid) return list;
+
+            ps.ForEachTriangle((a, b, c) =>
+                list.Add((new Vector3((float)a.X, (float)a.Y, (float)a.Z),
+                          new Vector3((float)b.X, (float)b.Y, (float)b.Z),
+                          new Vector3((float)c.X, (float)c.Y, (float)c.Z))));
+            return list;
         }
 
         static string RunSweeps(WaveriderJobResult r, WaveriderInputs inp, string stem)
@@ -197,25 +249,23 @@ namespace WaveriderForge.Gui
 
         static void AddHeader(Panel pnl, string text, ref int y)
         {
-            var l = new Label
+            pnl.Controls.Add(new Label
             {
                 Text = text, Left = 8, Top = y, Width = 330, Height = 18,
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = Color.FromArgb(60, 60, 90),
-            };
-            pnl.Controls.Add(l);
+            });
             y += 24;
         }
 
         static NumericUpDown AddNumeric(Panel pnl, string label, decimal min, decimal max,
                                         int dp, decimal inc, decimal val, ref int y)
         {
-            var l = new Label { Text = label, Left = 12, Top = y + 4, Width = 180, Height = 20 };
+            pnl.Controls.Add(new Label { Text = label, Left = 12, Top = y + 4, Width = 180, Height = 20 });
             var n = new NumericUpDown
             {
                 Left = 198, Top = y, Width = 130,
                 DecimalPlaces = dp, Minimum = min, Maximum = max, Increment = inc, Value = val,
             };
-            pnl.Controls.Add(l);
             pnl.Controls.Add(n);
             y += 30;
             return n;
