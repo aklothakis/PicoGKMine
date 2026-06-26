@@ -47,7 +47,7 @@ namespace WaveriderForge
         public double ShockAngleRad      { get; init; }          // beta
         public double CurveDepthRatio    { get; init; } = 0.15;  // Hc / b (shock-curve depth)
         public double CompressionFraction{ get; init; } = 0.55;  // captured streamtube fraction
-        public double TipTaper           { get; init; } = 0.85;  // taper of compression toward tips
+        public double TipTaper           { get; init; } = 2.5;   // spanwise taper exponent (planform fullness); section -> point at tips
         public double CurveExponent      { get; init; } = 2.0;   // shock-curve power law (>=2)
         public int    Nspan              { get; init; } = 101;   // spanwise stations (odd)
         public int    Nchord             { get; init; } = 41;    // chordwise samples
@@ -163,9 +163,11 @@ namespace WaveriderForge
                 double rhoCone  = R * tanC / tanB;
 
                 // Captured streamtube: lower-surface trailing edge radius, tapered
-                // toward the tips so the section closes to a fine edge.
-                double taper = 1.0 - Design.TipTaper * Math.Pow(Math.Abs(y) / b, 2.0);
-                double fc    = Design.CompressionFraction * Math.Max(taper, 0.04);
+                // to zero at the tips (|y| = b) so each spanwise section collapses
+                // to a point there. This makes the body close to clean wingtip
+                // points and stay watertight without fragile tip caps.
+                double taper = 1.0 - Math.Pow(Math.Abs(y) / b, Design.TipTaper);
+                double fc    = Design.CompressionFraction * Math.Max(taper, 0.0);
                 double rhoTe = rhoShock - fc * (rhoShock - rhoCone);
 
                 double axialBase = R / tanB;                       // x_base - apexX

@@ -142,7 +142,7 @@ namespace WaveriderForge
             double designLenM = result.Design.LengthM;
             double voxelMM = !double.IsNaN(opt.VoxelMM)
                 ? opt.VoxelMM
-                : Math.Max(designLenM * WaveriderBuilder.MM / 500.0, 1.0);
+                : WaveriderJob.AutoVoxelMM(designLenM);
             if (double.IsNaN(voxelMM) || voxelMM <= 0) voxelMM = 1.0;   // never pass NaN to the kernel
 
             if (opt.View)

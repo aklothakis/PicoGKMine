@@ -17,8 +17,8 @@ namespace WaveriderForge.Gui
 {
     public sealed class MainForm : Form
     {
-        readonly NumericUpDown numMach, numAlt, numLen, numBoxL, numBoxW, numBoxH, numQ, numRet;
-        readonly CheckBox      chkBox, chkBlunt, chkSweep;
+        readonly NumericUpDown numMach, numAlt, numLen, numBoxL, numBoxW, numBoxH, numQ, numRet, numVoxel;
+        readonly CheckBox      chkBox, chkBlunt, chkSweep, chkAutoVox;
         readonly Button        btnGen, btnStl, btnFolder;
         readonly TextBox       txtReport;
         readonly Viewport3D    viewport;
@@ -61,6 +61,13 @@ namespace WaveriderForge.Gui
             numQ     = AddNumeric(pnl, "Allowable q (MW/m^2)", 0.5m, 50m, 1, 0.5m, 5m, ref y);
             numRet   = AddNumeric(pnl, "L/D retention (0-1)", 0.50m, 1.00m, 2, 0.05m, 0.90m, ref y);
             chkSweep = AddCheck(pnl, "Run off-design sweep (CSV)", false, ref y);
+
+            y += 6;
+            AddHeader(pnl, "Mesh resolution", ref y);
+            chkAutoVox = AddCheck(pnl, "Auto voxel size", true, ref y);
+            numVoxel   = AddNumeric(pnl, "Voxel size (mm)", 0.2m, 200m, 1, 0.5m, 8m, ref y);
+            numVoxel.Enabled = false;
+            chkAutoVox.CheckedChanged += (_, _) => numVoxel.Enabled = !chkAutoVox.Checked;
 
             y += 10;
             btnGen = new Button { Text = "Generate", Left = 12, Top = y, Width = 320, Height = 36 };
@@ -144,6 +151,7 @@ namespace WaveriderForge.Gui
                 Blunt       = chkBlunt.Checked,
                 QAllowMW    = (double)numQ.Value,
                 LDRetention = (double)numRet.Value,
+                VoxelMM     = chkAutoVox.Checked ? double.NaN : (double)numVoxel.Value,
                 Sweep       = chkSweep.Checked,
                 OutDir      = m_strOutDir,
             };
@@ -164,7 +172,7 @@ namespace WaveriderForge.Gui
                     if (r.Opt.Aero.Valid && r.Surfaces is not null)
                     {
                         string stem = WaveriderJob.Stem(inp);
-                        double vol = WaveriderJob.Export(r, stem, out string stlp, out _);
+                        double vol = WaveriderJob.Export(r, stem, inp.VoxelMM, out string stlp, out _);
                         stl = stlp;
                         report += Environment.NewLine +
                                   $"Voxel-model volume   : {vol:F3} m^3" + Environment.NewLine +

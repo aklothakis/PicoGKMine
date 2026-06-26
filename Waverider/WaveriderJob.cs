@@ -28,6 +28,7 @@ namespace WaveriderForge
         public double QAllowMW    = 5.0;
         public double LDRetention = 0.90;
         public double LDFloor     = double.NaN;
+        public double VoxelMM     = double.NaN;   // voxel size; NaN => auto from length
         public bool   Sweep       = false;
         public string OutDir      = "output";
     }
@@ -87,15 +88,17 @@ namespace WaveriderForge
         public static string Stem(WaveriderInputs inp)
             => Path.Combine(inp.OutDir, $"waverider_M{inp.Mach:0.0}_{inp.AltitudeKm:0}km");
 
+        /// <summary>Default (auto) voxel size in mm for a given design length (m).</summary>
+        public static double AutoVoxelMM(double lengthM) => Math.Max(lengthM * 1000.0 / 600.0, 0.5);
+
         /// <summary>Voxelize and write STL + VDB. Returns the voxel-model volume (m^3).</summary>
-        public static double Export(WaveriderJobResult r, string stem,
+        public static double Export(WaveriderJobResult r, string stem, double voxelMM,
                                     out string stlPath, out string vdbPath)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(stem))!);
 
-            double lenM    = r.Opt.Design.LengthM;
-            double voxelMM = Math.Max(lenM * 1000.0 / 500.0, 1.0);
-            if (double.IsNaN(voxelMM) || voxelMM <= 0) voxelMM = 1.0;
+            if (double.IsNaN(voxelMM) || voxelMM <= 0)
+                voxelMM = AutoVoxelMM(r.Opt.Design.LengthM);
 
             using Library lib = new((float)voxelMM);
             var surf = new WaveriderSurfaces(r.Opt.Design,

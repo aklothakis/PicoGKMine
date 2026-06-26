@@ -67,7 +67,8 @@ dotnet run --project WaveriderGui
 ```
 
 Enter the Mach number, altitude and either a length or a "fit inside a box"
-envelope, toggle blunt leading edge / off-design sweep, and click **Generate**.
+envelope, set the leading-edge / sweep / **voxel size** options (uncheck
+"Auto voxel size" for a finer mesh and sharper detail), and click **Generate**.
 The optimized waverider is rendered live in the preview pane (drag to orbit,
 scroll to zoom) with the performance report beneath it. **Open 3D model (STL)**
 opens the result in the Windows 3D viewer, and **Open output folder** shows the
