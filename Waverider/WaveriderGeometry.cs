@@ -307,6 +307,36 @@ namespace WaveriderForge
             return le;
         }
 
+        /// <summary>
+        /// Sample the lower/upper surface heights at planform position (x, y),
+        /// clamping to the body where needed. Used to mount fins on the body.
+        /// </summary>
+        public void SampleZ(double x, double y, out double zLower, out double zUpper)
+        {
+            double b  = Design.HalfSpan;
+            double yc = Math.Clamp(y, -b * 0.9995, b * 0.9995);
+            int s = (int)Math.Round((yc + b) / (2.0 * b) * (Ns - 1));
+            s = Math.Clamp(s, 0, Ns - 1);
+            zLower = InterpZ(Lower[s], x);
+            zUpper = InterpZ(Upper[s], x);
+            if (zLower > zUpper) (zLower, zUpper) = (zUpper, zLower);
+        }
+
+        static double InterpZ(D3[] row, double x)
+        {
+            for (int t = 0; t < row.Length - 1; t++)
+            {
+                double a = row[t].X, c = row[t + 1].X;
+                if ((x >= a && x <= c) || (x <= a && x >= c))
+                {
+                    double f = Math.Abs(c - a) < 1e-12 ? 0.0 : (x - a) / (c - a);
+                    return row[t].Z * (1 - f) + row[t + 1].Z * f;
+                }
+            }
+            // Outside the row's chordwise range: clamp to the nearer end.
+            return Math.Abs(x - row[0].X) < Math.Abs(x - row[^1].X) ? row[0].Z : row[^1].Z;
+        }
+
         /// <summary>Axis-aligned bounding-box extents (metres) of the body.</summary>
         public void Extents(out double ex, out double ey, out double ez)
         {

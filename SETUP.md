@@ -67,8 +67,12 @@ dotnet run --project WaveriderGui
 ```
 
 Enter the Mach number, altitude and either a length or a "fit inside a box"
-envelope, set the leading-edge / sweep / **voxel size** options (uncheck
-"Auto voxel size" for a finer mesh and sharper detail), and click **Generate**.
+envelope. The leading edge is **sharp by default** — tick "Fillet leading edge"
+to round it, with a live **recommended radius** (computed from stagnation
+heating at your allowable q) and a "Use recommended" button. Add **diamond-
+airfoil fins** (mirrored pair and/or center fin) and control their chord,
+taper, height, sweep, cant, position, thickness and LE bluntness. Set the
+**voxel size** (uncheck "Auto" for finer detail) and click **Generate**.
 The optimized waverider is rendered live in the preview pane (drag to orbit,
 scroll to zoom) with the performance report beneath it. **Open 3D model (STL)**
 opens the result in the Windows 3D viewer, and **Open output folder** shows the

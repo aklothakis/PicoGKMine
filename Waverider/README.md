@@ -24,7 +24,8 @@ that you can view, 3D-print, or push into a CFD/CAD pipeline.
 | Upper surface | freestream (streamwise) surface |
 | Viscous drag | **Eckert reference-temperature** method (most accurate engineering model for waveriders) |
 | Base drag | high-Mach base-pressure model |
-| Leading edge | blunted, radius sized from **Sutton–Graves** stagnation heating |
+| Leading edge | **sharp by default**; optional fillet with a radius recommendation from **Sutton–Graves** stagnation heating |
+| Fins | parametric **diamond-airfoil** fins (pair and/or center): chord, taper, height, sweep, cant, position, thickness, LE bluntness; drag from linearized wave theory (`4τ²/β`) + reference-temperature friction |
 | Optimization | maximize volumetric efficiency `τ = V^(2/3)/S_plan` subject to an L/D floor |
 
 The optimizer's objective directly encodes the brief — *maximize useful volume
@@ -84,7 +85,15 @@ The report prints the target envelope and the achieved bounding box.
 --ld-floor=<value>     absolute L/D floor for the optimizer
 --ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
 --q-allow-mw=<MW/m^2>  allowable leading-edge stagnation heat flux  (default 5)
---sharp                sharp leading edge (no blunting)
+--fillet               fillet the leading edge at the recommended radius
+--fillet-mm=<r>        fillet the leading edge at a specific radius in mm
+                       (default is a SHARP leading edge)
+--q-allow-mw=<MW/m^2>  allowable LE heat flux driving the fillet recommendation
+--fins                 add a mirrored pair of diamond-airfoil fins
+--center-fin           add a centerline fin
+--fin-chord=<%L> --fin-taper=<r> --fin-height=<%L> --fin-sweep=<deg>
+--fin-cant=<deg> --fin-pos=<%b/2> --fin-te-inset=<%L> --fin-thick=<%c>
+--fin-radius-mm=<r>    fin leading-edge bluntness (0 = sharp)
 --voxel-mm=<mm>        voxel size override
 --out=<dir>            output directory                        (default ./output)
 --view                 open the interactive PicoGK viewer

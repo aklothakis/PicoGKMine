@@ -22,8 +22,15 @@
 //                          overrides --length/--span
 //   --ld-floor=<value>     absolute L/D floor for the optimizer
 //   --ld-retention=<0..1>  L/D floor as a fraction of the max achievable (default 0.90)
-//   --q-allow-mw=<MW/m^2>  allowable LE stagnation heat flux (default 5)
-//   --sharp                sharp leading edge (no blunting)
+//   --q-allow-mw=<MW/m^2>  allowable LE heat flux for the fillet recommendation (default 5)
+//   --fillet               fillet the leading edge at the recommended radius
+//   --fillet-mm=<r>        fillet the leading edge at a specific radius (mm)
+//                          (default is a sharp leading edge; --sharp forces it)
+//   --fins                 add a mirrored pair of diamond-airfoil fins
+//   --center-fin           add a centerline fin
+//   --fin-chord=<%L> --fin-taper=<r> --fin-height=<%L> --fin-sweep=<deg>
+//   --fin-cant=<deg> --fin-pos=<%b/2> --fin-te-inset=<%L> --fin-thick=<%c>
+//   --fin-radius-mm=<r>    fin leading-edge bluntness (0 = sharp)
 //   --voxel-mm=<mm>        voxel size override
 //   --out=<dir>            output directory                  (default ./output)
 //   --view                 open the interactive PicoGK viewer
@@ -100,18 +107,32 @@ namespace WaveriderForge
 
             ReportDesign(result, flow, opt);
 
+            var surfFinal = new WaveriderSurfaces(result.Design,
+                ConicalFlowField.Solve(flow.Mach, result.Design.ShockAngleRad, flow.Gamma));
+
             // Report the actual bounding box (gives the height, and the box fit).
+            if (surfFinal.Valid)
             {
-                var rs = new WaveriderSurfaces(result.Design,
-                    ConicalFlowField.Solve(flow.Mach, result.Design.ShockAngleRad, flow.Gamma));
-                if (rs.Valid)
-                {
-                    rs.Extents(out double ex, out double ey, out double ez);
-                    if (opt.HasBox)
-                        Console.WriteLine($"  Box envelope target   : {opt.BoxL:F2} x {opt.BoxW:F2} x {opt.BoxH:F2} m (LxWxH)");
-                    Console.WriteLine($"  Actual bounding box   : {ex:F2} x {ey:F2} x {ez:F2} m (LxWxH)");
-                    Console.WriteLine();
-                }
+                surfFinal.Extents(out double ex, out double ey, out double ez);
+                if (opt.HasBox)
+                    Console.WriteLine($"  Box envelope target   : {opt.BoxL:F2} x {opt.BoxW:F2} x {opt.BoxH:F2} m (LxWxH)");
+                Console.WriteLine($"  Actual bounding box   : {ex:F2} x {ey:F2} x {ez:F2} m (LxWxH)");
+                Console.WriteLine();
+            }
+
+            // Fins (diamond airfoil), if requested.
+            FinSet? finSet = opt.oFinSet();
+            List<Fin>? fins = null;
+            if (finSet != null && surfFinal.Valid)
+            {
+                fins = FinGeometry.Build(surfFinal, finSet);
+                double dFins = 0;
+                foreach (var fin in fins) dFins += FinGeometry.DragNewtons(flow, fin);
+                double ldWith = (result.Aero.Drag + dFins) > 1e-9
+                    ? result.Aero.Lift / (result.Aero.Drag + dFins) : 0;
+                Console.WriteLine($"  Fins                  : {fins.Count} x diamond airfoil, " +
+                                  $"est. drag {dFins / 1000.0:F1} kN, L/D incl. fins {ldWith:F2}");
+                Console.WriteLine();
             }
 
             Directory.CreateDirectory(opt.OutDir);
@@ -122,19 +143,22 @@ namespace WaveriderForge
             if (opt.Sweep)
                 RunSweeps(result, flow, opt, stem);
 
-            // --- Geometry generation with PicoGK --------------------------------
+            // --- Leading edge: sharp by default, optional fillet ----------------
+            double recM = Heating.LeadingEdgeRadius(flow, opt.QAllowMW * 1.0e6);
             double leRadiusM = 0;
-            if (!opt.Sharp)
+            if (opt.FilletLE)
             {
-                leRadiusM = Heating.LeadingEdgeRadius(flow, opt.QAllowMW * 1.0e6);
+                leRadiusM = double.IsNaN(opt.FilletMM) ? recM : opt.FilletMM / 1000.0;
                 double qAt = Heating.StagHeatFlux(flow, leRadiusM);
-                Console.WriteLine($"  Leading edge          : blunted, radius {leRadiusM * 1000:F1} mm");
-                Console.WriteLine($"  Stagnation heat flux  : {qAt / 1.0e6:F2} MW/m^2 (at allowable)");
+                Console.WriteLine($"  Leading edge          : filleted, radius {leRadiusM * 1000:F1} mm");
+                Console.WriteLine($"  Stagnation heat flux  : {qAt / 1.0e6:F2} MW/m^2" +
+                                  (qAt > opt.QAllowMW * 1.0e6 * 1.001 ? $"  EXCEEDS allowable {opt.QAllowMW:F1}" : ""));
             }
             else
             {
                 Console.WriteLine("  Leading edge          : sharp");
             }
+            Console.WriteLine($"  Recommended fillet    : >= {recM * 1000:F1} mm to keep q <= {opt.QAllowMW:F1} MW/m^2");
             Console.WriteLine();
 
             // Size voxels from the ACTUAL design length (in box mode opt.LengthM
@@ -148,14 +172,14 @@ namespace WaveriderForge
             if (opt.View)
             {
                 Library.Go((float)voxelMM, () =>
-                    Generate(Library.oLibrary(), result, flow,
+                    Generate(Library.oLibrary(), surfFinal, fins,
                              leRadiusM * WaveriderBuilder.MM, stem, true),
                     strWindowTitle: "Waverider Forge");
             }
             else
             {
                 using Library lib = new((float)voxelMM);
-                Generate(lib, result, flow, leRadiusM * WaveriderBuilder.MM, stem, false);
+                Generate(lib, surfFinal, fins, leRadiusM * WaveriderBuilder.MM, stem, false);
             }
 
             Console.WriteLine();
@@ -205,17 +229,14 @@ namespace WaveriderForge
         }
 
         static void Generate(Library lib,
-                             OptimizationResult result,
-                             FlightState flow,
+                             WaveriderSurfaces surf,
+                             List<Fin>? fins,
                              double leRadiusMM,
                              string stem,
                              bool view)
         {
             Console.WriteLine($"  Voxelizing at {lib.fVoxelSize:F1} mm voxels...");
-            var surf = new WaveriderSurfaces(result.Design,
-                ConicalFlowField.Solve(flow.Mach, result.Design.ShockAngleRad, flow.Gamma));
-
-            Voxels vox = WaveriderBuilder.BuildVoxels(lib, surf, leRadiusMM);
+            Voxels vox = WaveriderBuilder.BuildVoxels(lib, surf, leRadiusMM, fins);
 
             vox.CalculateProperties(out float volMM3, out _);
             Console.WriteLine($"  Voxel-model volume    : {volMM3 / 1.0e9:F3} m^3");
@@ -313,9 +334,28 @@ namespace WaveriderForge
         public double LDRetention = 0.90;
         public double QAllowMW    = 5.0;
         public double VoxelMM     = double.NaN;
-        public bool   Sharp       = false;
+        public bool   FilletLE    = false;        // sharp by default
+        public double FilletMM    = double.NaN;   // NaN => recommended radius
         public bool   View        = true;    // open the viewer by default; --no-view to disable
         public bool   Sweep       = false;
+
+        // Fins (diamond airfoil)
+        public bool   FinPair     = false;
+        public bool   FinCenter   = false;
+        public double FinChordPct = 25, FinTaper = 0.45, FinHeightPct = 12,
+                      FinSweep = 55, FinCant = 15, FinPosPct = 60,
+                      FinInsetPct = 0, FinThickPct = 6, FinRadMM = 0;
+
+        public FinSet? oFinSet()
+            => (FinPair || FinCenter) ? new FinSet
+               {
+                   Pair = FinPair, Center = FinCenter,
+                   RootChordFrac = FinChordPct / 100.0, TaperRatio = FinTaper,
+                   HeightFrac = FinHeightPct / 100.0, SweepDeg = FinSweep,
+                   CantDeg = FinCant, SpanPosFrac = FinPosPct / 100.0,
+                   TEInsetFrac = FinInsetPct / 100.0, ThicknessRatio = FinThickPct / 100.0,
+                   LERadiusMM = FinRadMM,
+               } : null;
         public string? SweepMach  = null;   // "min:max:count"
         public string? SweepAoa   = null;   // "min:max:count"
         public string OutDir      = "output";
@@ -346,7 +386,20 @@ namespace WaveriderForge
                         case "ld-retention": o.LDRetention = D(val); break;
                         case "q-allow-mw":   o.QAllowMW = D(val); break;
                         case "voxel-mm":     o.VoxelMM = D(val); break;
-                        case "sharp":        o.Sharp = true; break;
+                        case "sharp":        o.FilletLE = false; break;
+                        case "fillet":       o.FilletLE = true; break;
+                        case "fillet-mm":    o.FilletLE = true; o.FilletMM = D(val); break;
+                        case "fins":         o.FinPair = true; break;
+                        case "center-fin":   o.FinCenter = true; break;
+                        case "fin-chord":    o.FinChordPct = D(val); break;
+                        case "fin-taper":    o.FinTaper = D(val); break;
+                        case "fin-height":   o.FinHeightPct = D(val); break;
+                        case "fin-sweep":    o.FinSweep = D(val); break;
+                        case "fin-cant":     o.FinCant = D(val); break;
+                        case "fin-pos":      o.FinPosPct = D(val); break;
+                        case "fin-te-inset": o.FinInsetPct = D(val); break;
+                        case "fin-thick":    o.FinThickPct = D(val); break;
+                        case "fin-radius-mm": o.FinRadMM = D(val); break;
                         case "view":         o.View = true; break;
                         case "no-view":      o.View = false; break;
                         case "sweep":        o.Sweep = true; break;

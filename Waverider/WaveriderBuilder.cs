@@ -56,10 +56,13 @@ namespace WaveriderForge
         }
 
         /// <summary>
-        /// Voxelize the body. If <paramref name="leRadiusMM"/> &gt; 0 the leading
-        /// edge is blunted by unioning a swept cylinder of that radius.
+        /// Voxelize the body plus optional fins. If <paramref name="leRadiusMM"/>
+        /// &gt; 0 the wing leading edge is filleted by unioning a swept cylinder
+        /// of that radius centred on the edge; fins get the same treatment with
+        /// their own per-fin radius.
         /// </summary>
-        public static Voxels BuildVoxels(Library lib, WaveriderSurfaces s, double leRadiusMM)
+        public static Voxels BuildVoxels(Library lib, WaveriderSurfaces s, double leRadiusMM,
+                                         IReadOnlyList<Fin>? fins = null)
         {
             using Mesh msh = BuildMesh(lib, s);
             Voxels vox = new(msh);
@@ -72,6 +75,25 @@ namespace WaveriderForge
                 for (int i = 0; i < le.Length - 1; i++)
                     lat.AddBeam(ToMM(le[i]), r, ToMM(le[i + 1]), r, true);
                 vox.BoolAdd(new Voxels(lat));
+            }
+
+            if (fins != null)
+            {
+                foreach (Fin fin in fins)
+                {
+                    using Mesh mshFin = new(lib);
+                    foreach (var (a, b, c) in fin.Tris)
+                        mshFin.nAddTriangle(ToMM(a), ToMM(b), ToMM(c));
+                    vox.BoolAdd(new Voxels(mshFin));
+
+                    if (fin.LERadiusMM > 0)
+                    {
+                        float rf = (float)Math.Max(fin.LERadiusMM, 1.5 * lib.fVoxelSize);
+                        Lattice latFin = new(lib);
+                        latFin.AddBeam(ToMM(fin.LERoot), rf, ToMM(fin.LETip), rf, true);
+                        vox.BoolAdd(new Voxels(latFin));
+                    }
+                }
             }
             return vox;
         }
