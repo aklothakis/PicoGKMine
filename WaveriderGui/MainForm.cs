@@ -30,6 +30,9 @@ namespace WaveriderForge.Gui
         readonly CheckBox      chkFinPair, chkFinCenter;
         readonly NumericUpDown numFinChord, numFinTaper, numFinHeight, numFinSweep,
                                numFinCant, numFinPos, numFinInset, numFinThick, numFinRad;
+        readonly Label         lblFinRec;
+        readonly Button        btnFinRec;
+        double?                m_recFinHeightPct;
         // Solver + mesh
         readonly NumericUpDown numRet, numVoxel;
         readonly CheckBox      chkSweep, chkAutoVox;
@@ -95,6 +98,14 @@ namespace WaveriderForge.Gui
             numFinInset  = AddNumeric(pnl, "TE inset from base (% length)", 0m, 50m, 1, 1m, 0m, ref y);
             numFinThick  = AddNumeric(pnl, "Thickness (% chord)", 2m, 20m, 1, 0.5m, 6m, ref y);
             numFinRad    = AddNumeric(pnl, "Fin LE radius (mm, 0 = sharp)", 0m, 500m, 1, 0.5m, 0m, ref y);
+            lblFinRec = new Label { Left = 12, Top = y + 3, Width = 216, Height = 20,
+                                    ForeColor = Color.FromArgb(30, 90, 30),
+                                    Text = "Fin sizing: generate first" };
+            pnl.Controls.Add(lblFinRec);
+            btnFinRec = new Button { Text = "Use recommended", Left = 228, Top = y, Width = 116, Height = 24, Enabled = false };
+            btnFinRec.Click += (_, _) => UseRecommendedFinHeight();
+            pnl.Controls.Add(btnFinRec);
+            y += 30;
 
             y += 4;
             AddHeader(pnl, "Solver & mesh", ref y);
@@ -212,6 +223,16 @@ namespace WaveriderForge.Gui
             catch { /* keep current value */ }
         }
 
+        void UseRecommendedFinHeight()
+        {
+            if (m_recFinHeightPct is not double pct) return;
+            decimal v = (decimal)Math.Clamp(pct,
+                (double)numFinHeight.Minimum, (double)numFinHeight.Maximum);
+            numFinHeight.Value = Math.Round(v, 1);
+            if (!chkFinPair.Checked && !chkFinCenter.Checked)
+                chkFinPair.Checked = true;   // recommendation assumes a pair
+        }
+
         FinSet? BuildFinSet()
         {
             if (!chkFinPair.Checked && !chkFinCenter.Checked) return null;
@@ -276,12 +297,20 @@ namespace WaveriderForge.Gui
                         if (inp.Sweep) report += Environment.NewLine + RunSweeps(r, inp, stem);
                     }
                     var tris = BuildPreview(r);
-                    return (report, stl, tris);
+                    double? recPct = r.Stability is { ReqValid: true } st
+                        ? st.ReqHeightFrac * 100.0 : null;
+                    return (report, stl, tris, recPct);
                 });
 
                 txtReport.Text = job.report.Replace("\n", Environment.NewLine);
                 m_strLastStl   = job.stl;
                 btnStl.Enabled = job.stl is not null;
+
+                m_recFinHeightPct = job.recPct;
+                lblFinRec.Text = job.recPct is double p
+                    ? $"Recommended height: {p:F1} % L"
+                    : "Fin sizing: n/a for this design";
+                btnFinRec.Enabled = job.recPct is not null;
 
                 if (job.tris.Count > 0) viewport.SetTriangles(job.tris);
                 else                    viewport.Clear();

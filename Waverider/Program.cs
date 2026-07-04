@@ -135,6 +135,16 @@ namespace WaveriderForge
                 Console.WriteLine();
             }
 
+            // Static stability + fin sizing recommendation.
+            if (surfFinal.Valid && result.Aero.Valid)
+            {
+                var stab = Stability.Analyze(surfFinal, flow, result.Aero, fins, finSet);
+                foreach (string line in stab.Describe(result.Design.LengthM)
+                             .Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    Console.WriteLine("  " + line.TrimEnd());
+                Console.WriteLine();
+            }
+
             Directory.CreateDirectory(opt.OutDir);
             string stem = Path.Combine(opt.OutDir,
                 $"waverider_M{opt.Mach:0.0}_{opt.AltitudeM / 1000.0:0}km");

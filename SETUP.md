@@ -73,6 +73,10 @@ heating at your allowable q) and a "Use recommended" button. Add **diamond-
 airfoil fins** (mirrored pair and/or center fin) and control their chord,
 taper, height, sweep, cant, position, thickness and LE bluntness. Set the
 **voxel size** (uncheck "Auto" for finer detail) and click **Generate**.
+
+After each run the report includes a **stability section** (CG, pitch static
+margin, directional Cn_beta) and the fins group shows a **recommended fin
+height** that meets the directional-stability target — one click applies it.
 The optimized waverider is rendered live in the preview pane (drag to orbit,
 scroll to zoom) with the performance report beneath it. **Open 3D model (STL)**
 opens the result in the Windows 3D viewer, and **Open output folder** shows the

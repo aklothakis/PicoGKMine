@@ -26,6 +26,7 @@ that you can view, 3D-print, or push into a CFD/CAD pipeline.
 | Base drag | high-Mach base-pressure model |
 | Leading edge | **sharp by default**; optional fillet with a radius recommendation from **Sutton–Graves** stagnation heating |
 | Fins | parametric **diamond-airfoil** fins (pair and/or center): chord, taper, height, sweep, cant, position, thickness, LE bluntness; drag from linearized wave theory (`4τ²/β`) + reference-temperature friction |
+| Stability | CG at volume centroid; pitch static margin from Newtonian panel derivatives; directional `Cn_β` (body panels + linearized fin lift `4/β` with cant & blanketing corrections); **recommended fin area/height** to hit a target `Cn_β = 0.05 /rad` |
 | Optimization | maximize volumetric efficiency `τ = V^(2/3)/S_plan` subject to an L/D floor |
 
 The optimizer's objective directly encodes the brief — *maximize useful volume

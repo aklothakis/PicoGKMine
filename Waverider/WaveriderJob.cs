@@ -43,6 +43,7 @@ namespace WaveriderForge
         public double                      LeRadiusM { get; init; }   // applied fillet (0 = sharp)
         public double                      RecommendedLeRadiusM { get; init; }
         public List<Fin>?                  Fins      { get; init; }
+        public StabilityInfo?              Stability { get; init; }
         public string                      Report    { get; set; } = "";
     }
 
@@ -90,10 +91,15 @@ namespace WaveriderForge
             if (inp.Fins != null && surf != null)
                 fins = FinGeometry.Build(surf, inp.Fins);
 
+            StabilityInfo? stab = null;
+            if (surf != null && result.Aero.Valid)
+                stab = Stability.Analyze(surf, flow, result.Aero, fins, inp.Fins);
+
             var jr = new WaveriderJobResult
             {
                 Opt = result, Flow = flow, Surfaces = surf,
                 LeRadiusM = leR, RecommendedLeRadiusM = recM, Fins = fins,
+                Stability = stab,
             };
             jr.Report = BuildReport(jr, inp);
             return jr;
@@ -207,6 +213,12 @@ namespace WaveriderForge
                 sb.AppendLine($"  Thickness ratio      : {inp.Fins.ThicknessRatio * 100:F1} %  (LE radius {inp.Fins.LERadiusMM:F1} mm)");
                 sb.AppendLine($"  Est. fin drag        : {dFins / 1000.0:F1} kN (wave + friction, zero lift)");
                 sb.AppendLine($"  L/D including fins   : {ldWith:F2}");
+            }
+
+            if (r.Stability is not null)
+            {
+                sb.AppendLine();
+                sb.Append(r.Stability.Describe(d.LengthM));
             }
             return sb.ToString();
         }
